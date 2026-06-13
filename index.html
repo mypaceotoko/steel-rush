@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>STEEL RUSH − 高速バイクバトル −</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@600;800;900&family=Noto+Sans+JP:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --cy:#3ee0ff; --cy2:#1f7fe8; --navy:#071a3a; --ink:#04060d;
+  --rose:#ff3b6b; --amber:#ffb340; --lime:#7dffb0;
+  --hud-bd:rgba(190,225,255,.85);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--ink);touch-action:none;
+  font-family:'Rajdhani','Noto Sans JP',sans-serif;color:#eaf6ff;user-select:none;-webkit-user-select:none}
+canvas#gl{position:fixed;inset:0;display:block}
+
+/* ===== 共通HUDパーツ ===== */
+#hud{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .4s}
+#hud.on{opacity:1}
+.skew{transform:skewX(-14deg)}
+.unskew{transform:skewX(14deg)}
+
+/* 速度ライン(疾走感オーバーレイ) */
+#speedlines{position:fixed;inset:-10%;pointer-events:none;opacity:0;mix-blend-mode:screen;
+  background:repeating-linear-gradient(115deg,transparent 0 46px,rgba(120,210,255,.10) 46px 48px);
+  animation:slide .35s linear infinite}
+@keyframes slide{to{background-position:140px 0}}
+#vignette{position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 46%,transparent 52%,rgba(0,4,12,.55) 100%)}
+#dmgflash{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 60%,rgba(255,40,70,.35),rgba(255,0,40,.12) 60%,transparent 75%);opacity:0;transition:opacity .08s}
+
+/* 左上 操作レジェンド */
+#legend{position:fixed;top:max(10px,env(safe-area-inset-top));left:14px;font-size:13px;line-height:1.85;letter-spacing:.04em;
+  color:#cfe6ff;text-shadow:0 1px 3px rgba(0,0,0,.9);font-weight:600}
+#legend .k{display:inline-block;min-width:34px;text-align:center;border:1px solid rgba(200,230,255,.55);border-radius:4px;
+  padding:0 5px;margin-right:8px;font-family:'Orbitron';font-size:10px;background:rgba(8,20,40,.55)}
+@media (pointer:coarse){#legend{display:none}}
+
+/* 中央上 チュートリアルメッセージ */
+#msg{position:fixed;top:7%;left:50%;transform:translateX(-50%);max-width:92vw;text-align:center;
+  font-family:'Noto Sans JP';font-weight:900;font-size:clamp(17px,3.4vw,30px);letter-spacing:.06em;color:#fff;
+  text-shadow:0 0 6px rgba(0,0,0,.9),0 2px 2px #000,0 0 22px rgba(80,180,255,.35);
+  opacity:0;transition:opacity .25s;white-space:pre-line}
+#msg.warn{color:#ffd9e2;text-shadow:0 0 6px rgba(0,0,0,.9),0 2px 2px #000,0 0 24px rgba(255,60,100,.7)}
+
+/* 中央 WAVE表示 */
+#wave{position:fixed;top:36%;left:0;right:0;text-align:center;font-family:'Orbitron';font-weight:900;
+  font-size:clamp(30px,7vw,64px);letter-spacing:.3em;color:transparent;opacity:0;
+  -webkit-text-stroke:1.5px rgba(140,220,255,.9);text-shadow:0 0 30px rgba(62,224,255,.45)}
+
+/* 右下 プレイヤーHP */
+#party{position:fixed;right:14px;bottom:calc(14px + env(safe-area-inset-bottom));width:min(330px,46vw)}
+.unit{margin-top:8px;filter:drop-shadow(0 3px 8px rgba(0,0,0,.7))}
+.unit .row{display:flex;align-items:stretch;gap:0}
+.nameplate{background:linear-gradient(180deg,#11305e,#081530 70%);border:1px solid var(--hud-bd);
+  border-right:none;padding:2px 12px 2px 10px;font-family:'Orbitron';font-weight:800;font-size:13px;letter-spacing:.12em;
+  display:flex;align-items:center;color:#eaf6ff}
+.bars{flex:1;border:1px solid var(--hud-bd);background:rgba(3,8,18,.78);padding:4px 6px 3px}
+.blabel{font-size:9px;letter-spacing:.22em;color:#9fc6ee;font-family:'Orbitron';display:flex;justify-content:space-between}
+.bartrack{height:9px;background:#03101f;border:1px solid rgba(120,170,220,.35);margin-top:1px;overflow:hidden}
+.barfill{height:100%;width:100%;background:linear-gradient(180deg,#9be9ff,#2ea8f5 45%,#0c4fae);box-shadow:0 0 8px rgba(62,224,255,.6);transition:width .15s}
+.barfill.low{background:linear-gradient(180deg,#ffe49b,#f5a52e 45%,#ae5a0c)}
+.barfill.crit{background:linear-gradient(180deg,#ff9bb1,#f52e5d 45%,#ae0c33)}
+.gtrack{height:6px;background:#160620;border:1px solid rgba(220,140,255,.35);margin-top:3px;overflow:hidden}
+.gfill{height:100%;width:0%;background:linear-gradient(90deg,#7a2ef5,#e05cff,#ff9bf0);box-shadow:0 0 8px rgba(224,92,255,.7);transition:width .15s}
+.gtrack.full .gfill{animation:gpulse .6s ease-in-out infinite alternate}
+@keyframes gpulse{from{filter:brightness(1)}to{filter:brightness(1.7)}}
+
+/* 左下 アビリティ名 */
+#ability{position:fixed;left:14px;bottom:calc(16px + env(safe-area-inset-bottom));
+  display:flex;align-items:center;gap:10px;opacity:.55;transition:opacity .2s,filter .2s;filter:saturate(.4)}
+#ability.ready{opacity:1;filter:none}
+#ability .badge{font-family:'Orbitron';font-weight:800;font-size:11px;border:1px solid var(--hud-bd);
+  padding:3px 9px;background:linear-gradient(180deg,#143a72,#091a38);letter-spacing:.1em}
+#ability .name{font-family:'Noto Sans JP';font-weight:900;font-size:17px;letter-spacing:.12em;white-space:nowrap;
+  background:linear-gradient(180deg,rgba(30,90,180,.9),rgba(8,24,56,.9));border:1px solid var(--hud-bd);
+  padding:4px 22px 4px 14px;clip-path:polygon(0 0,100% 0,calc(100% - 12px) 100%,0 100%);
+  text-shadow:0 1px 2px #000}
+#ability.ready .name{box-shadow:0 0 18px rgba(62,224,255,.45)}
+@media (pointer:coarse){
+  /* 必殺ボタンに「必殺/LIMIT」表示があるため、重複するアビリティ名は隠す */
+  #ability{display:none}
+  /* HPバーは右下のボタン群と被らないよう左上へ */
+  #party{right:auto;bottom:auto;left:10px;top:max(8px,env(safe-area-inset-top));width:min(200px,44vw)}
+  .nameplate{font-size:11px;padding:2px 7px}
+  .blabel{font-size:8px}
+  /* ボスHPは右上に分離(左上のプレイヤーHPと衝突しない) */
+  #bossbar{top:max(8px,env(safe-area-inset-top));left:auto;right:10px;transform:none;width:min(300px,50vw)}
+  #bossbar .bn{font-size:11px;letter-spacing:.1em}
+}
+
+/* ボスHP */
+#bossbar{position:fixed;top:max(12px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(540px,72vw);display:none}
+#bossbar .bn{text-align:center;font-family:'Noto Sans JP';font-weight:900;font-size:14px;letter-spacing:.3em;color:#ffd6de;text-shadow:0 0 10px rgba(255,60,100,.6),0 2px 2px #000}
+#bossbar .bartrack{height:10px;border-color:rgba(255,150,170,.5)}
+#bossbar .barfill{background:linear-gradient(180deg,#ffb3c4,#f52e63 45%,#7a0a26);box-shadow:0 0 10px rgba(255,59,107,.6)}
+
+/* ダメージ数字 */
+.dmg{position:fixed;font-family:'Orbitron';font-weight:900;font-size:20px;color:#fff;
+  text-shadow:0 0 8px rgba(62,224,255,.9),0 2px 2px #000;pointer-events:none;animation:dpop .7s ease-out forwards}
+.dmg.taken{color:#ffb3c4;text-shadow:0 0 8px rgba(255,59,107,.9),0 2px 2px #000}
+.dmg.heal{color:#b8ffd2}
+@keyframes dpop{0%{transform:translate(-50%,0) scale(.6);opacity:0}15%{opacity:1;transform:translate(-50%,-14px) scale(1.15)}100%{transform:translate(-50%,-52px) scale(.95);opacity:0}}
+
+/* ===== タッチ操作 ===== */
+#touch{position:fixed;inset:0;pointer-events:none;display:none}
+@media (pointer:coarse){#touch.on{display:block}}
+.tbtn{position:absolute;pointer-events:auto;display:flex;align-items:center;justify-content:center;flex-direction:column;
+  border:1.5px solid rgba(180,220,255,.5);background:rgba(10,24,48,.42);backdrop-filter:blur(3px);
+  color:#dff1ff;font-family:'Noto Sans JP';font-weight:900;border-radius:50%;
+  text-shadow:0 1px 2px #000;transition:background .08s,transform .08s}
+.tbtn:active,.tbtn.pressed{background:rgba(62,224,255,.35);transform:scale(.94)}
+.tbtn small{font-size:9px;font-weight:700;letter-spacing:.1em;color:#9fc6ee}
+.tbtn .ic{font-size:22px;line-height:1}
+/* 左クラスタ: ◀▶を底辺、加速を上、減速を下に分離 */
+#bL {left:12px;  bottom:calc(78px + env(safe-area-inset-bottom));width:72px;height:72px}
+#bR {left:100px; bottom:calc(78px + env(safe-area-inset-bottom));width:72px;height:72px}
+#bAc{left:56px;  bottom:calc(164px + env(safe-area-inset-bottom));width:62px;height:62px;font-size:12px}
+#bBr{left:56px;  bottom:calc(6px  + env(safe-area-inset-bottom));width:62px;height:62px;font-size:12px}
+/* 右クラスタ: 左斬・右斬を横並び、防御は下、必殺は上に分離 */
+#bAL{right:104px;bottom:calc(118px + env(safe-area-inset-bottom));width:78px;height:78px;font-size:15px;border-color:rgba(120,255,190,.55)}
+#bAR{right:12px; bottom:calc(118px + env(safe-area-inset-bottom));width:78px;height:78px;font-size:15px;border-color:rgba(120,255,190,.55)}
+#bGd{right:60px; bottom:calc(34px  + env(safe-area-inset-bottom));width:64px;height:64px;font-size:13px;border-color:rgba(255,210,130,.55)}
+#bSp{right:62px; bottom:calc(206px + env(safe-area-inset-bottom));width:66px;height:66px;font-size:13px;
+  border-color:rgba(240,130,255,.7);box-shadow:0 0 0 rgba(224,92,255,0)}
+#bSp.full{box-shadow:0 0 22px rgba(224,92,255,.8);background:rgba(120,30,160,.45)}
+/* 横向き(高さが低い)時はさらにコンパクトに */
+@media (pointer:coarse) and (max-height:480px){
+  #bL{left:10px;bottom:60px;width:62px;height:62px}
+  #bR{left:86px;bottom:60px;width:62px;height:62px}
+  #bAc{left:48px;bottom:132px;width:54px;height:54px}
+  #bBr{left:48px;bottom:4px;width:54px;height:54px}
+  #bAL{right:90px;bottom:92px;width:68px;height:68px}
+  #bAR{right:10px;bottom:92px;width:68px;height:68px}
+  #bGd{right:50px;bottom:20px;width:56px;height:56px}
+  #bSp{right:52px;bottom:168px;width:58px;height:58px}
+  #bossbar{bottom:auto;top:max(8px,env(safe-area-inset-top));left:auto;right:12px;transform:none;width:min(300px,40vw)}
+  #party{width:min(250px,42vw)}
+}
+
+/* ===== タイトル / リザルト ===== */
+.screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;
+  background:radial-gradient(ellipse at 50% 30%,rgba(20,50,110,.5),rgba(2,4,10,.94) 70%);z-index:30;transition:opacity .5s}
+.screen.hide{opacity:0;pointer-events:none}
+#title h1{font-family:'Orbitron';font-weight:900;font-size:clamp(40px,9vw,92px);letter-spacing:.12em;line-height:1;
+  background:linear-gradient(180deg,#fff,#8fd8ff 45%,#1f7fe8 80%);-webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 26px rgba(62,224,255,.45));transform:skewX(-8deg)}
+#title .sub{margin-top:10px;font-family:'Noto Sans JP';font-weight:700;letter-spacing:.55em;font-size:clamp(12px,2.4vw,18px);color:#bfe2ff;text-indent:.55em}
+#title .desc{margin-top:26px;font-size:14px;line-height:2;color:#9fc6ee;text-align:center;font-weight:600}
+.cta{margin-top:34px;pointer-events:auto;cursor:pointer;font-family:'Noto Sans JP';font-weight:900;font-size:18px;letter-spacing:.3em;text-indent:.3em;
+  color:#04101f;background:linear-gradient(180deg,#bdf0ff,#3ee0ff 55%,#1f7fe8);border:none;padding:15px 64px;
+  clip-path:polygon(14px 0,100% 0,calc(100% - 14px) 100%,0 100%);box-shadow:0 0 30px rgba(62,224,255,.5);transition:transform .1s,filter .1s}
+.cta:hover{filter:brightness(1.15)}.cta:active{transform:scale(.96)}
+#result{display:none}
+#result.show{display:flex}
+#result .rlabel{font-family:'Noto Sans JP';font-weight:900;letter-spacing:.5em;text-indent:.5em;color:#bfe2ff;font-size:16px}
+#rank{font-family:'Orbitron';font-weight:900;font-size:clamp(110px,24vw,220px);line-height:1;margin:6px 0 14px;
+  background:linear-gradient(180deg,#fff,#ffe9a8 40%,#ffb340 75%,#c75b00);-webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 40px rgba(255,179,64,.5));animation:rankin .6s cubic-bezier(.2,2.2,.4,1) both}
+@keyframes rankin{from{transform:scale(2.4);opacity:0}to{transform:scale(1);opacity:1}}
+#rtitle{font-family:'Noto Sans JP';font-weight:900;font-size:clamp(20px,4vw,32px);letter-spacing:.2em;margin-bottom:18px}
+#stats{display:grid;grid-template-columns:auto auto;gap:6px 26px;font-size:15px;font-weight:600;color:#cfe6ff}
+#stats b{font-family:'Orbitron';color:#fff;text-align:right}
+#orient{position:fixed;left:50%;bottom:10px;transform:translateX(-50%);font-size:11px;color:#7da6cc;z-index:31;letter-spacing:.1em}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="speedlines"></div>
+<div id="vignette"></div>
+<div id="dmgflash"></div>
+
+<div id="hud">
+  <div id="legend">
+    <span class="k">W</span>アクセル<br>
+    <span class="k">S</span>ブレーキ<br>
+    <span class="k">A D</span>左右移動<br>
+    <span class="k">J</span>左側を攻撃<br>
+    <span class="k">L</span>右側を攻撃<br>
+    <span class="k">SPACE</span>ガード<br>
+    <span class="k">E</span>必殺技
+  </div>
+  <div id="msg"></div>
+  <div id="wave"></div>
+  <div id="bossbar">
+    <div class="bn">追撃部隊長 ヴァルガス</div>
+    <div class="bartrack"><div class="barfill" id="bossfill"></div></div>
+  </div>
+  <div id="ability"><span class="badge">LIMIT</span><span class="name">スピンスラッシュ</span></div>
+  <div id="party">
+    <div class="unit skew">
+      <div class="row unskew_wrap">
+        <div class="nameplate">KAI</div>
+        <div class="bars">
+          <div class="blabel"><span>HP</span><span id="hptext">1000 / 1000</span></div>
+          <div class="bartrack"><div class="barfill" id="hpfill"></div></div>
+          <div class="gtrack" id="gtrack"><div class="gfill" id="gfill"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="touch" class="">
+  <div class="tbtn" id="bL"  data-k="left"><span class="ic">◀</span></div>
+  <div class="tbtn" id="bR"  data-k="right"><span class="ic">▶</span></div>
+  <div class="tbtn" id="bAc" data-k="accel">加速<small>ACCEL</small></div>
+  <div class="tbtn" id="bBr" data-k="brake">減速<small>BRAKE</small></div>
+  <div class="tbtn" id="bAL" data-k="atkL">左斬<small>ATTACK L</small></div>
+  <div class="tbtn" id="bAR" data-k="atkR">右斬<small>ATTACK R</small></div>
+  <div class="tbtn" id="bGd" data-k="guard">防御<small>GUARD</small></div>
+  <div class="tbtn" id="bSp" data-k="special">必殺<small>LIMIT</small></div>
+</div>
+
+<div class="screen" id="title">
+  <h1>STEEL RUSH</h1>
+  <div class="sub">− 高速バイクバトル −</div>
+  <div class="desc">深夜のハイウェイ。追撃部隊を振り切り、生きて抜けろ。<br>左右の敵をすれ違いざまに斬り、照準が光ったら回避かガード。<br>リミットゲージが満タンになれば、必殺のスピンスラッシュが放てる。</div>
+  <button class="cta" id="startBtn">出撃する</button>
+</div>
+
+<div class="screen" id="result">
+  <div class="rlabel">RESULT − 戦闘評価</div>
+  <div id="rank">S</div>
+  <div id="rtitle">完璧な走りだ!</div>
+  <div id="stats"></div>
+  <button class="cta" id="retryBtn" style="margin-top:30px">再出撃</button>
+</div>
+<div id="orient">※スマホは横向きプレイ推奨</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ============================================================
+   STEEL RUSH − 高速バイクバトル −  (Three.js r128)
+   ============================================================ */
+'use strict';
+
+/* ---------- 基本セットアップ ---------- */
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputEncoding = THREE.sRGBEncoding;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05070d);
+scene.fog = new THREE.Fog(0x05070d, 55, 300);
+
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.1, 500);
+camera.position.set(0, 4.4, 8);
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ライティング */
+scene.add(new THREE.HemisphereLight(0x5577aa, 0x0a0a14, 0.85));
+const dir = new THREE.DirectionalLight(0x9fc8ff, 0.55);
+dir.position.set(-6, 18, -20);
+scene.add(dir);
+const headlight = new THREE.SpotLight(0xcfe8ff, 1.3, 80, 0.55, 0.6);
+scene.add(headlight); scene.add(headlight.target);
+
+/* ---------- マテリアル ---------- */
+const M = {
+  road:   new THREE.MeshStandardMaterial({color:0x2a2f38, roughness:.85, metalness:.35}),
+  plate:  new THREE.MeshStandardMaterial({color:0x383f4c, roughness:.7,  metalness:.5}),
+  wall:   new THREE.MeshStandardMaterial({color:0x1b2029, roughness:.95, metalness:.1}),
+  rail:   new THREE.MeshStandardMaterial({color:0x4a5364, roughness:.5,  metalness:.8}),
+  lineW:  new THREE.MeshBasicMaterial({color:0xbfd6e8}),
+  lineC:  new THREE.MeshBasicMaterial({color:0x2ec5ff}),
+  cable:  new THREE.MeshBasicMaterial({color:0xd89030}),
+  lamp:   new THREE.MeshBasicMaterial({color:0xffe9b8}),
+  lampC:  new THREE.MeshBasicMaterial({color:0x9fe8ff}),
+  dark:   new THREE.MeshStandardMaterial({color:0x14161c, roughness:.6, metalness:.6}),
+  blueBody:new THREE.MeshStandardMaterial({color:0x1c3a6e, roughness:.35, metalness:.75}),
+  steel:  new THREE.MeshStandardMaterial({color:0x8a93a3, roughness:.35, metalness:.9}),
+  tire:   new THREE.MeshStandardMaterial({color:0x0c0d10, roughness:.95}),
+  redBody:new THREE.MeshStandardMaterial({color:0x8e1620, roughness:.4, metalness:.7}),
+  eliteBody:new THREE.MeshStandardMaterial({color:0x3a3f2a, roughness:.5, metalness:.6}),
+  bossBody:new THREE.MeshStandardMaterial({color:0x23262e, roughness:.3, metalness:.85}),
+  skin:   new THREE.MeshStandardMaterial({color:0xc9a486, roughness:.8}),
+  cloth:  new THREE.MeshStandardMaterial({color:0x2b2f38, roughness:.9}),
+  clothR: new THREE.MeshStandardMaterial({color:0x6e1a22, roughness:.9}),
+  blade:  new THREE.MeshStandardMaterial({color:0xd8e6f2, roughness:.15, metalness:1, emissive:0x224466, emissiveIntensity:.4}),
+  bladeE: new THREE.MeshStandardMaterial({color:0x999999, roughness:.3, metalness:.9}),
+  glowR:  new THREE.MeshBasicMaterial({color:0xff3b5e}),
+  glowC:  new THREE.MeshBasicMaterial({color:0x66e8ff}),
+  glowP:  new THREE.MeshBasicMaterial({color:0xe05cff}),
+  shot:   new THREE.MeshBasicMaterial({color:0xffd060}),
+};
+const box = (w,h,d,m)=> new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m);
+const cyl = (r1,r2,h,m,seg=14)=> new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,h,seg), m);
+
+/* ---------- コース(セグメント循環) ---------- */
+const SEG_LEN = 40, SEG_N = 14, COURSE = SEG_LEN*SEG_N;
+const segments = [];
+function buildSegment(i){
+  const g = new THREE.Group();
+  // 路面
+  const road = box(34, 1, SEG_LEN, M.road); road.position.y = -0.5; g.add(road);
+  // 金属プレート(市松)
+  for(let p=0;p<4;p++){
+    const pl = box(7.4, 0.06, SEG_LEN/2-1, M.plate);
+    pl.position.set(-12.6+p*8.4, 0.03, (p%2? -SEG_LEN/4 : SEG_LEN/4));
+    g.add(pl);
+  }
+  // レーンライン
+  [-8.6,-2.9,2.9,8.6].forEach((x,idx)=>{
+    const ln = box(0.14, 0.02, SEG_LEN-4, idx===0||idx===3 ? M.lineC : M.lineW);
+    ln.position.set(x, 0.05, 0); g.add(ln);
+  });
+  // 中央ゴールドケーブル
+  for(let c=0;c<3;c++){
+    const cb = cyl(0.07,0.07,SEG_LEN, M.cable);
+    cb.rotation.x = Math.PI/2; cb.position.set(-0.5+c*0.5, 0.08, 0); g.add(cb);
+  }
+  // ガードレール
+  [-11.2, 11.2].forEach(x=>{
+    const r = box(0.25, 0.5, SEG_LEN, M.rail); r.position.set(x, 0.85, 0); g.add(r);
+    for(let k=0;k<4;k++){ const post = box(0.18,0.85,0.18,M.rail); post.position.set(x,0.43,-SEG_LEN/2+5+k*10); g.add(post); }
+  });
+  // 壁
+  [-16.5, 16.5].forEach(x=>{
+    const w = box(2, 18, SEG_LEN, M.wall); w.position.set(x, 8, 0); g.add(w);
+    const lamp = box(0.3, 0.9, 1.6, M.lamp); lamp.position.set(x*(15.3/16.5), 5.5, -SEG_LEN/4); g.add(lamp);
+  });
+  // 天井ビーム(3セグメントごと)
+  if(i%3===0){
+    const beam = box(33, 1.4, 2.2, M.dark); beam.position.set(0, 12.5, 0); g.add(beam);
+    for(let k=-2;k<=2;k++){ const l = box(0.7,0.18,0.7,M.lampC); l.position.set(k*7,11.7,0); g.add(l); }
+    [-15.8,15.8].forEach(x=>{ const col = box(1.4,12,2.2,M.dark); col.position.set(x,6,0); g.add(col); });
+  }
+  // 天井
+  const ceil = box(36, 1, SEG_LEN, M.wall); ceil.position.set(0, 17, 0); g.add(ceil);
+  g.position.z = -COURSE + (i+1)*SEG_LEN + 40;
+  scene.add(g); segments.push(g);
+}
+for(let i=0;i<SEG_N;i++) buildSegment(i);
+
+/* ---------- バイク生成 ---------- */
+function buildBike(bodyMat, clothMat, opts={}){
+  const g = new THREE.Group();
+  const s = opts.scale||1;
+  const bike = new THREE.Group(); g.add(bike);
+  // フレーム
+  const tank = box(0.62,0.42,1.1,bodyMat); tank.position.set(0,0.95,-0.15); bike.add(tank);
+  const cowl = box(0.56,0.5,0.7,bodyMat); cowl.position.set(0,1.0,-0.85); cowl.rotation.x=0.25; bike.add(cowl);
+  const lower= box(0.5,0.5,1.9,M.dark); lower.position.set(0,0.62,0); bike.add(lower);
+  const tail = box(0.5,0.3,0.8,bodyMat); tail.position.set(0,1.02,0.85); tail.rotation.x=-0.2; bike.add(tail);
+  const seat = box(0.46,0.12,0.7,M.tire); seat.position.set(0,1.12,0.35); bike.add(seat);
+  // ハンドル
+  const bar = box(0.95,0.07,0.07,M.steel); bar.position.set(0,1.32,-0.78); bike.add(bar);
+  // マフラー
+  const muf = cyl(0.09,0.11,0.9,M.steel); muf.rotation.x=Math.PI/2; muf.position.set(0.3,0.5,0.95); bike.add(muf);
+  // ホイール
+  const wheels=[];
+  [[-0,-1.05],[0,1.05]].forEach(([x,z],i)=>{
+    const w = new THREE.Group();
+    const t = cyl(0.42,0.42,0.24,M.tire,18); t.rotation.z=Math.PI/2; w.add(t);
+    const hub = cyl(0.18,0.18,0.27,M.steel,10); hub.rotation.z=Math.PI/2; w.add(hub);
+    w.position.set(x,0.42,z); bike.add(w); wheels.push(w);
+  });
+  // ヘッドライト
+  const hl = box(0.3,0.18,0.06, opts.tail? M.glowR : M.lamp); hl.position.set(0,1.05,-1.22); bike.add(hl);
+  const tl = box(0.34,0.1,0.05, M.glowR); tl.position.set(0,1.0,1.28); bike.add(tl);
+  // ライダー
+  const rider = new THREE.Group(); g.add(rider);
+  const hips = box(0.42,0.3,0.34,clothMat); hips.position.set(0,1.25,0.3); rider.add(hips);
+  const chest= box(0.46,0.5,0.36,clothMat); chest.position.set(0,1.62,0.08); chest.rotation.x=0.5; rider.add(chest);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.17,10,8), opts.helm||M.dark); head.position.set(0,1.95,-0.12); rider.add(head);
+  [[-0.28],[0.28]].forEach(([x])=>{
+    const leg = box(0.16,0.55,0.2,clothMat); leg.position.set(x,0.95,0.28); leg.rotation.x=0.5; rider.add(leg);
+  });
+  const armL = box(0.13,0.5,0.16,clothMat); armL.position.set(-0.34,1.55,-0.25); armL.rotation.x=1.0; rider.add(armL);
+  // 右腕+武器(スイング用グループ)
+  const armPivot = new THREE.Group(); armPivot.position.set(0.34,1.7,0.1); rider.add(armPivot);
+  const armR = box(0.13,0.5,0.16,clothMat); armR.position.set(0,-0.2,-0.18); armR.rotation.x=0.9; armPivot.add(armR);
+  let blade=null;
+  if(opts.weapon){
+    blade = new THREE.Group();
+    const b = box(0.06, opts.weapon==='big'?1.7:1.1, 0.16, M.blade); b.position.y = (opts.weapon==='big'?0.95:0.65); blade.add(b);
+    const e = box(0.1,0.28,0.1,M.bladeE); e.position.y=0.05; blade.add(e);
+    blade.position.set(0,-0.35,-0.35); blade.rotation.x = -1.2;
+    armPivot.add(blade);
+  }
+  g.scale.setScalar(s);
+  return {group:g, bike, rider, wheels, armPivot, blade};
+}
+
+/* プレイヤー */
+const playerModel = buildBike(M.blueBody, M.cloth, {weapon:'big'});
+scene.add(playerModel.group);
+/* 必殺技用リング */
+const limitRing = new THREE.Mesh(new THREE.TorusGeometry(1,0.12,8,40), M.glowC);
+limitRing.rotation.x = Math.PI/2; limitRing.visible=false; scene.add(limitRing);
+/* 剣閃アーク(左右斬撃の軌跡) */
+const slashArc = new THREE.Mesh(new THREE.TorusGeometry(2.15, 0.1, 6, 30, 1.7), M.glowC.clone());
+slashArc.material.transparent = true; slashArc.material.opacity = 0;
+slashArc.visible = false; scene.add(slashArc);
+const slashArc2 = slashArc.clone(); slashArc2.material = slashArc.material.clone();
+slashArc2.geometry = new THREE.TorusGeometry(1.7, 0.06, 6, 30, 1.7);
+scene.add(slashArc2);
+
+/* ---------- パーティクル ---------- */
+const sparks=[];
+const sparkGeo = new THREE.BoxGeometry(0.1,0.1,0.32);
+for(let i=0;i<140;i++){
+  const m = new THREE.Mesh(sparkGeo, i%3? M.shot : M.glowC);
+  m.visible=false; scene.add(m);
+  sparks.push({m, vel:new THREE.Vector3(), life:0});
+}
+let sparkIdx=0;
+function burst(pos, n=10, col='amber', spread=3){
+  for(let i=0;i<n;i++){
+    const s = sparks[sparkIdx++ % sparks.length];
+    s.m.visible=true; s.m.position.copy(pos);
+    s.m.material = col==='cyan'? M.glowC : col==='red'? M.glowR : col==='purple'? M.glowP : M.shot;
+    s.vel.set((Math.random()-0.5)*spread,(Math.random()*0.7+0.2)*spread,(Math.random()-0.5)*spread + 4);
+    s.life = 0.5 + Math.random()*0.4;
+  }
+}
+function updateSparks(dt){
+  for(const s of sparks){
+    if(s.life<=0){s.m.visible=false;continue;}
+    s.life-=dt; s.vel.y -= 9*dt;
+    s.m.position.addScaledVector(s.vel, dt);
+    s.m.rotation.x+=dt*9; s.m.rotation.y+=dt*7;
+    if(s.life<=0) s.m.visible=false;
+  }
+}
+
+/* ---------- サウンド(WebAudio合成) ---------- */
+let AC=null, engineOsc=null, engineGain=null, engineFilter=null;
+function initAudio(){
+  if(AC) return;
+  AC = new (window.AudioContext||window.webkitAudioContext)();
+  engineOsc = AC.createOscillator(); engineOsc.type='sawtooth'; engineOsc.frequency.value=55;
+  const o2 = AC.createOscillator(); o2.type='square'; o2.frequency.value=110;
+  engineFilter = AC.createBiquadFilter(); engineFilter.type='lowpass'; engineFilter.frequency.value=300;
+  engineGain = AC.createGain(); engineGain.gain.value=0.0;
+  engineOsc.connect(engineFilter); o2.connect(engineFilter);
+  engineFilter.connect(engineGain); engineGain.connect(AC.destination);
+  engineOsc.start(); o2.start();
+}
+function sfx(type){
+  if(!AC) return;
+  const t = AC.currentTime;
+  if(type==='slash'){
+    const n = AC.createBufferSource();
+    const buf = AC.createBuffer(1, AC.sampleRate*0.16, AC.sampleRate);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*(1-i/d.length);
+    n.buffer=buf;
+    const f=AC.createBiquadFilter(); f.type='bandpass'; f.frequency.setValueAtTime(2400,t); f.frequency.exponentialRampToValueAtTime(700,t+0.15); f.Q.value=1.4;
+    const g=AC.createGain(); g.gain.setValueAtTime(0.35,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.16);
+    n.connect(f); f.connect(g); g.connect(AC.destination); n.start();
+  }else if(type==='hit'){
+    const o=AC.createOscillator(); o.type='square'; o.frequency.setValueAtTime(420,t); o.frequency.exponentialRampToValueAtTime(90,t+0.12);
+    const g=AC.createGain(); g.gain.setValueAtTime(0.28,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.14);
+    o.connect(g); g.connect(AC.destination); o.start(); o.stop(t+0.15);
+  }else if(type==='shot'){
+    const o=AC.createOscillator(); o.type='sawtooth'; o.frequency.setValueAtTime(900,t); o.frequency.exponentialRampToValueAtTime(160,t+0.1);
+    const g=AC.createGain(); g.gain.setValueAtTime(0.18,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.12);
+    o.connect(g); g.connect(AC.destination); o.start(); o.stop(t+0.13);
+  }else if(type==='boom'){
+    const n=AC.createBufferSource();
+    const buf=AC.createBuffer(1,AC.sampleRate*0.6,AC.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2);
+    n.buffer=buf;
+    const f=AC.createBiquadFilter(); f.type='lowpass'; f.frequency.setValueAtTime(900,t); f.frequency.exponentialRampToValueAtTime(80,t+0.5);
+    const g=AC.createGain(); g.gain.setValueAtTime(0.5,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.6);
+    n.connect(f); f.connect(g); g.connect(AC.destination); n.start();
+  }else if(type==='limit'){
+    const o=AC.createOscillator(); o.type='sawtooth'; o.frequency.setValueAtTime(180,t); o.frequency.exponentialRampToValueAtTime(1400,t+0.35);
+    const g=AC.createGain(); g.gain.setValueAtTime(0.25,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.5);
+    o.connect(g); g.connect(AC.destination); o.start(); o.stop(t+0.5);
+  }else if(type==='warn'){
+    const o=AC.createOscillator(); o.type='triangle'; o.frequency.value=1100;
+    const g=AC.createGain(); g.gain.setValueAtTime(0.0,t);
+    g.gain.linearRampToValueAtTime(0.16,t+0.03); g.gain.linearRampToValueAtTime(0,t+0.12);
+    g.gain.linearRampToValueAtTime(0.16,t+0.2); g.gain.linearRampToValueAtTime(0,t+0.3);
+    o.connect(g); g.connect(AC.destination); o.start(); o.stop(t+0.32);
+  }
+}
+
+/* ---------- 入力 ---------- */
+const inp = {left:false,right:false,accel:false,brake:false,atkL:false,atkR:false,guard:false,special:false};
+const keymap = {KeyA:'left',ArrowLeft:'left',KeyD:'right',ArrowRight:'right',KeyW:'accel',ArrowUp:'accel',
+  KeyS:'brake',ArrowDown:'brake',KeyJ:'atkL',KeyL:'atkR',Space:'guard',KeyE:'special',Enter:'special'};
+addEventListener('keydown',e=>{ if(keymap[e.code]!==undefined){inp[keymap[e.code]]=true; e.preventDefault();} });
+addEventListener('keyup',e=>{ if(keymap[e.code]!==undefined) inp[keymap[e.code]]=false; });
+document.querySelectorAll('.tbtn').forEach(b=>{
+  const k=b.dataset.k;
+  const dn=e=>{e.preventDefault(); inp[k]=true; b.classList.add('pressed');};
+  const up=e=>{e.preventDefault(); inp[k]=false; b.classList.remove('pressed');};
+  b.addEventListener('pointerdown',dn);
+  b.addEventListener('pointerup',up);
+  b.addEventListener('pointerleave',up);
+  b.addEventListener('pointercancel',up);
+});
+if('ontouchstart' in window) document.getElementById('touch').classList.add('on');
+
+/* ---------- UI ヘルパ ---------- */
+const $ = id=>document.getElementById(id);
+const msgEl=$('msg'), waveEl=$('wave');
+let msgTimer=null;
+function showMsg(text, dur=2.6, warn=false){
+  msgEl.textContent=text; msgEl.classList.toggle('warn',warn); msgEl.style.opacity=1;
+  clearTimeout(msgTimer); msgTimer=setTimeout(()=>msgEl.style.opacity=0, dur*1000);
+}
+function showWave(t){
+  waveEl.textContent=t; waveEl.style.transition='none'; waveEl.style.opacity=1;
+  requestAnimationFrame(()=>{ waveEl.style.transition='opacity 1.4s'; waveEl.style.opacity=0; });
+}
+const v3 = new THREE.Vector3();
+function popDamage(worldPos, val, cls=''){
+  v3.copy(worldPos); v3.project(camera);
+  const x=(v3.x*0.5+0.5)*innerWidth, y=(-v3.y*0.5+0.5)*innerHeight;
+  const d=document.createElement('div'); d.className='dmg '+cls; d.textContent=val;
+  d.style.left=x+'px'; d.style.top=y+'px';
+  document.body.appendChild(d); setTimeout(()=>d.remove(),720);
+}
+
+/* ---------- ゲーム状態 ---------- */
+const G = {
+  state:'title', t:0,
+  speed:42, // 見かけのスクロール速度
+  px:0, // プレイヤーx
+  hp:1000, maxHp:1000, gauge:0,
+  invuln:0, atkCd:0, swing:null, guardEff:false,
+  kills:0, taken:0, battleTime:0,
+  wave:0, waveDelay:1.5,
+  shake:0, limitT:0,
+  boss:null, ended:false,
+};
+const enemies=[]; const shots=[]; const waves_total=5;
+
+/* ---------- 敵 ---------- */
+function spawnEnemy(type, side){
+  let model, hp, scale=1;
+  if(type==='grunt'){ model=buildBike(M.redBody, M.clothR, {weapon:'small', helm:M.clothR}); hp=240; }
+  else if(type==='elite'){ model=buildBike(M.eliteBody, M.cloth, {helm:M.eliteBody}); hp=380;
+    // ライフル
+    const gun=box(0.09,0.09,1.3,M.dark); gun.position.set(0,-0.3,-0.7); model.armPivot.add(gun); model.gun=gun;
+  }
+  else { model=buildBike(M.bossBody, M.cloth, {weapon:'big', helm:M.glowR, scale:1.35}); hp=1700; scale=1.35;
+    const gun=box(0.12,0.12,1.6,M.dark); gun.position.set(-0.7,-0.1,-0.5); model.armPivot.add(gun);
+  }
+  const e = {
+    type, model, hp, maxHp:hp, side: side|| (Math.random()<0.5?-1:1),
+    x: (side||1)*14, z: 26 + Math.random()*8, // 後方から登場
+    speed:0, state:'approach', timer:0, lockX:0, aimLine:null,
+    swing:null, glow:null, dead:false, vulnerable:true,
+  };
+  if(type==='elite'){ e.z = -50 - Math.random()*10; e.x = e.side*5; }
+  if(type==='boss'){ e.z = -60; e.x = 0; e.state='boss_enter'; e.timer=0; }
+  model.group.position.set(e.x, 0, e.z);
+  scene.add(model.group);
+  enemies.push(e);
+  return e;
+}
+function killEnemy(e){
+  e.dead=true;
+  burst(e.model.group.position.clone().add(new THREE.Vector3(0,1,0)), 26, 'amber', 7);
+  burst(e.model.group.position.clone().add(new THREE.Vector3(0,1,0)), 10, 'red', 5);
+  sfx('boom');
+  if(e.aimLine){ scene.remove(e.aimLine); e.aimLine=null; }
+  scene.remove(e.model.group);
+  G.kills++;
+  G.gauge=Math.min(100, G.gauge+15);
+}
+function damageEnemy(e, dmg, pos){
+  if(e.dead) return;
+  e.hp-=dmg;
+  popDamage(pos||e.model.group.position.clone().add(new THREE.Vector3(0,1.6,0)), dmg);
+  burst(pos||e.model.group.position.clone().add(new THREE.Vector3(0,1.2,0)), 8, 'amber', 4);
+  sfx('hit');
+  G.gauge=Math.min(100, G.gauge+10);
+  if(e.hp<=0) killEnemy(e);
+}
+function damagePlayer(dmg, canGuard=true){
+  if(G.invuln>0 || G.ended) return;
+  let final=dmg;
+  if(canGuard && inp.guard){ final=Math.round(dmg*0.25); G.guardEff=true; }
+  G.hp=Math.max(0,G.hp-final);
+  G.taken++;
+  G.invuln=0.6; G.shake=Math.min(1, G.shake+0.7);
+  popDamage(playerModel.group.position.clone().add(new THREE.Vector3(0,2,0)), final, 'taken');
+  $('dmgflash').style.opacity = inp.guard&&canGuard ? 0.4 : 1;
+  setTimeout(()=>$('dmgflash').style.opacity=0, 110);
+  sfx(inp.guard&&canGuard?'hit':'boom');
+  if(G.hp<=0) endBattle(false);
+}
+
+/* 照準レーザー */
+function makeAimLine(){
+  const g = new THREE.BoxGeometry(0.06,0.06,1);
+  const m = new THREE.Mesh(g, M.glowR.clone());
+  m.material.transparent=true; m.material.opacity=0.85;
+  scene.add(m); return m;
+}
+function updateAimLine(line, from, to){
+  const mid = from.clone().add(to).multiplyScalar(0.5);
+  line.position.copy(mid);
+  line.lookAt(to);
+  line.scale.z = from.distanceTo(to);
+}
+
+/* 弾 */
+function fireShot(from, targetX, dmg){
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.22,8,6), M.shot);
+  m.position.copy(from);
+  scene.add(m);
+  shots.push({m, x:targetX, dmg, speed: 65});
+  sfx('shot');
+}
+
+/* ---------- ウェーブ管理 ---------- */
+function nextWave(){
+  G.wave++;
+  if(G.wave===1){ showWave('WAVE 1'); showMsg('敵バイク接近!\n左右の敵に合わせて 左斬・右斬', 3.5);
+    spawnEnemy('grunt',-1); spawnEnemy('grunt',1); }
+  else if(G.wave===2){ showWave('WAVE 2'); showMsg('攻撃の予備動作(赤い光)を見たら\n移動・ブレーキで回避、またはガード!', 3.8);
+    spawnEnemy('grunt',-1); spawnEnemy('grunt',1); setTimeout(()=>{if(G.state==='play')spawnEnemy('grunt',Math.random()<.5?-1:1)},2500); }
+  else if(G.wave===3){ showWave('WAVE 3'); showMsg('前方に狙撃兵!照準レーザーが光ったら\n慌てず、左右のどちらかに移動して回避', 4, true);
+    spawnEnemy('elite',-1); spawnEnemy('grunt',1); spawnEnemy('grunt',-1); }
+  else if(G.wave===4){ showWave('WAVE 4'); showMsg('リミットゲージ満タンで 必殺技!\n周囲を薙ぎ払い、前方へ斬撃波を放つ', 4);
+    spawnEnemy('elite',-1); spawnEnemy('elite',1); spawnEnemy('grunt',1); setTimeout(()=>{if(G.state==='play')spawnEnemy('grunt',-1)},3000); }
+  else if(G.wave===5){
+    showWave('BOSS'); sfx('warn');
+    showMsg('追撃部隊長 ヴァルガス 出現!', 3, true);
+    G.boss = spawnEnemy('boss');
+    $('bossbar').style.display='block';
+  }
+}
+
+/* ---------- プレイヤー攻撃 ---------- */
+function playerAttack(side){
+  if(G.atkCd>0) return;
+  G.atkCd=0.36;
+  G.swing={t:0, side};
+  G.shake=Math.min(1, G.shake+0.12);
+  sfx('slash');
+  for(const e of enemies){
+    if(e.dead) continue;
+    const dx = e.x - G.px;
+    if(Math.sign(dx)!==side) continue;
+    if(Math.abs(dx)<3.6 && Math.abs(e.z)<3.2 && e.vulnerable){
+      const hitPos = new THREE.Vector3(G.px+side*1.8, 1.4, e.z*0.5);
+      damageEnemy(e, 120, hitPos);
+    }
+  }
+}
+function playerLimit(){
+  if(G.gauge<100 || G.limitT>0) return;
+  G.gauge=0; G.limitT=0.9; G.invuln=1.0; G.swing=null; slashArc.visible=false; slashArc2.visible=false;
+  sfx('limit'); sfx('slash');
+  showMsg('リミット技 ─ スピンスラッシュ!', 2);
+  limitRing.visible=true; limitRing.scale.setScalar(0.5);
+  limitRing.position.set(G.px,1,0);
+  // 周囲薙ぎ払い
+  for(const e of enemies){
+    if(e.dead) continue;
+    const d = Math.hypot(e.x-G.px, e.z);
+    if(d<9) damageEnemy(e, 340);
+  }
+  // 前方斬撃波
+  const wave = new THREE.Mesh(new THREE.BoxGeometry(3.4,2.2,0.3), M.glowC.clone());
+  wave.material.transparent=true; wave.material.opacity=0.8;
+  wave.position.set(G.px,1.3,-2);
+  scene.add(wave);
+  shots.push({m:wave, isWave:true, dmg:280, speed:-95, hitset:new Set()});
+  burst(playerModel.group.position.clone().add(new THREE.Vector3(0,1.2,0)), 24, 'cyan', 8);
+  burst(playerModel.group.position.clone().add(new THREE.Vector3(0,1.2,0)), 14, 'purple', 6);
+}
+
+/* ---------- 敵AI更新 ---------- */
+function setGlow(e, on){
+  if(on && !e.glow){
+    e.glow = new THREE.Mesh(new THREE.SphereGeometry(0.32,8,6), M.glowR.clone());
+    e.glow.material.transparent=true; e.glow.material.opacity=0.85;
+    e.glow.position.set(0,2.1,0); e.model.group.add(e.glow);
+  } else if(!on && e.glow){ e.model.group.remove(e.glow); e.glow=null; }
+  if(e.glow) e.glow.scale.setScalar(1+Math.sin(G.t*22)*0.3);
+}
+function enemySwingAnim(e, dt){
+  if(!e.swing) return;
+  e.swing.t+=dt;
+  const p = Math.min(1, e.swing.t/0.22);
+  e.model.armPivot.rotation.z = -e.side * Math.sin(p*Math.PI)*2.0;
+  if(p>=1) e.swing=null;
+}
+function updateEnemy(e, dt){
+  if(e.dead) return;
+  const gp = e.model.group;
+  const relSpd = dt; // helper
+  e.timer += dt;
+
+  if(e.type==='grunt'){
+    if(e.state==='approach'){
+      const tx = G.px + e.side*2.3;
+      e.x += (tx-e.x)*Math.min(1, 2.2*dt);
+      e.z += (0-e.z)*Math.min(1, 1.6*dt);
+      if(Math.abs(e.z)<0.9 && Math.abs(e.x-tx)<0.7 && e.timer>1.2){ e.state='tele'; e.timer=0; sfx('warn'); }
+    }else if(e.state==='tele'){
+      setGlow(e,true);
+      // 予備動作中は追尾しない=移動・加減速で回避可能
+      e.z += (G.speed-42)*0.32*dt;
+      if(e.timer>0.85){
+        setGlow(e,false);
+        e.state='cd'; e.timer=0;
+        e.swing={t:0};
+        if(Math.abs(e.x-G.px)<3.4 && Math.abs(e.z)<2.6){
+          damagePlayer(70);
+          burst(playerModel.group.position.clone().add(new THREE.Vector3(0,1.3,0)),10,'red',4);
+        } else { popDamage(gp.position.clone().add(new THREE.Vector3(0,2,0)),'MISS'); }
+      }
+    }else if(e.state==='cd'){
+      // 少し離れて間合いを取り直す
+      e.z += (3.5-e.z)*1.2*dt;
+      e.x += (G.px+e.side*3.2-e.x)*1.0*dt;
+      if(e.timer>1.6){ e.state='approach'; e.timer=0; }
+    }
+  }
+  else if(e.type==='elite'){
+    e.vulnerable = Math.abs(e.z)<6;
+    if(e.state==='approach'){ // 前方の狙撃位置へ
+      e.z += (-26-e.z)*Math.min(1,1.4*dt);
+      e.x += (e.side*4.5-e.x)*1.2*dt;
+      if(e.timer>2.2){ e.state='aim'; e.timer=0; e.aimLine=makeAimLine(); sfx('warn'); }
+    }else if(e.state==='aim'){
+      if(e.timer<0.75) e.lockX = G.px; // 途中までは追尾
+      if(e.aimLine){
+        const from = gp.position.clone().add(new THREE.Vector3(0,1.5,0));
+        const to = new THREE.Vector3(e.lockX, 1.0, 1.5);
+        updateAimLine(e.aimLine, from, to);
+        e.aimLine.material.opacity = 0.4+Math.sin(G.t*30)*0.4;
+      }
+      if(e.timer>1.15){
+        scene.remove(e.aimLine); e.aimLine=null;
+        fireShot(gp.position.clone().add(new THREE.Vector3(0,1.4,0)), e.lockX, 80);
+        e.shotsFired=(e.shotsFired||0)+1;
+        e.state = e.shotsFired%3===0 ? 'close' : 'recover'; e.timer=0;
+      }
+    }else if(e.state==='recover'){
+      if(e.timer>0.9){ e.state='aim'; e.timer=0; e.aimLine=makeAimLine(); sfx('warn'); }
+    }else if(e.state==='close'){ // 横に並ぶ=攻撃チャンス
+      const tx = G.px + e.side*2.3;
+      e.x += (tx-e.x)*2.0*dt;
+      e.z += (0-e.z)*1.6*dt;
+      if(e.timer>3.6){ e.state='approach'; e.timer=0; }
+      if(e.timer>1.4 && Math.abs(e.z)<1.2 && !e.meleeDone){
+        e.meleeDone=true; setGlow(e,true);
+        setTimeout(()=>{ if(e.dead)return; setGlow(e,false); e.swing={t:0};
+          if(Math.abs(e.x-G.px)<3.4 && Math.abs(e.z)<2.6) damagePlayer(60);
+        }, 800);
+      }
+      if(e.state==='approach') e.meleeDone=false;
+    }
+  }
+  else if(e.type==='boss'){
+    updateBoss(e, dt);
+  }
+
+  enemySwingAnim(e, dt);
+  // モデル反映
+  gp.position.x += (e.x-gp.position.x)*Math.min(1,10*dt);
+  gp.position.z = e.z;
+  const lean = THREE.MathUtils.clamp((e.x-gp.position.x)*2,-0.45,0.45);
+  gp.rotation.z = -lean;
+  e.model.wheels.forEach(w=>w.rotation.x -= G.speed*dt*0.8);
+}
+
+/* ---------- ボスAI ---------- */
+function updateBoss(e, dt){
+  e.vulnerable = e.phase==='side' || Math.abs(e.z)<7;
+  if(e.state==='boss_enter'){
+    e.z += (-14-e.z)*1.2*dt;
+    if(e.timer>2.4){ e.state='boss_think'; e.timer=0; e.patternIdx=0; }
+  }
+  else if(e.state==='boss_think'){
+    e.z += (-14-e.z)*1.0*dt; e.x += (0-e.x)*1.0*dt; e.phase=null;
+    if(e.timer>1.2){
+      const order=['side','gun','side','shock','gun','side','shock'];
+      e.phase=order[e.patternIdx % order.length]; e.patternIdx++;
+      e.state='boss_'+e.phase; e.timer=0;
+      e.side = G.px>0 ? 1 : -1;
+      if(e.phase==='shock'){ showMsg('衝撃波が来る ─ ガードで防げ!', 2.2, true); sfx('warn'); }
+    }
+  }
+  else if(e.state==='boss_side'){ // 幅寄せ斬撃
+    if(!e.teleDone){
+      const tx = G.px + e.side*2.6;
+      e.x += (tx-e.x)*2.4*dt;
+      e.z += (0-e.z)*2.0*dt;
+    }else{
+      e.z += (G.speed-42)*0.32*dt; // 予備動作中はブレーキ/アクセルで回避可能
+    }
+    if(e.timer>1.4 && !e.teleDone){ e.teleDone=true; setGlow(e,true); sfx('warn'); }
+    if(e.timer>2.3 && e.teleDone){
+      setGlow(e,false); e.teleDone=false; e.swing={t:0};
+      if(Math.abs(e.x-G.px)<3.8 && Math.abs(e.z)<3.0){ damagePlayer(110); }
+      else popDamage(e.model.group.position.clone().add(new THREE.Vector3(0,2.4,0)),'MISS');
+      e.state='boss_linger'; e.timer=0;
+    }
+  }
+  else if(e.state==='boss_linger'){ // 攻撃チャンスタイム
+    e.z += (0.5-e.z)*1.2*dt;
+    if(e.timer>2.0){ e.state='boss_think'; e.timer=0; }
+  }
+  else if(e.state==='boss_gun'){
+    e.z += (-18-e.z)*1.8*dt; e.x += (e.side*3-e.x)*1.4*dt;
+    if(!e.aimLine && e.timer>0.6){ e.aimLine=makeAimLine(); e.gunCount=0; e.gt=0; sfx('warn'); }
+    if(e.aimLine){
+      e.gt=(e.gt||0)+dt;
+      if(e.gt<0.6) e.lockX=G.px;
+      const from=e.model.group.position.clone().add(new THREE.Vector3(0,2,0));
+      updateAimLine(e.aimLine, from, new THREE.Vector3(e.lockX,1,1.5));
+      e.aimLine.material.opacity=0.4+Math.sin(G.t*30)*0.4;
+      if(e.gt>0.9){
+        fireShot(from, e.lockX, 75);
+        e.gunCount++; e.gt=0;
+        if(e.gunCount>=3){ scene.remove(e.aimLine); e.aimLine=null; e.state='boss_think'; e.timer=0; }
+      }
+    }
+  }
+  else if(e.state==='boss_shock'){
+    e.z += (-12-e.z)*1.6*dt; e.x += (0-e.x)*1.6*dt;
+    setGlow(e,true);
+    if(e.timer>1.5 && !e.shockwave){
+      setGlow(e,false);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(2.5,0.35,8,40), M.glowR.clone());
+      ring.material.transparent=true; ring.rotation.x=Math.PI/2;
+      ring.position.set(0,0.6,e.z); scene.add(ring);
+      e.shockwave={m:ring, z:e.z, hit:false};
+      sfx('boom');
+    }
+    if(e.shockwave){
+      const sw=e.shockwave;
+      sw.z += 42*dt;
+      sw.m.position.z=sw.z;
+      sw.m.scale.setScalar(1+ (sw.z-e.z)*0.02);
+      if(!sw.hit && sw.z>-1 && sw.z<1.5){
+        sw.hit=true;
+        damagePlayer(inp.guard?25:130, false); // guard判定は中で別途
+        if(inp.guard){ popDamage(playerModel.group.position.clone().add(new THREE.Vector3(0,2.4,0)),'GUARD!','heal'); }
+      }
+      if(sw.z>14){ scene.remove(sw.m); e.shockwave=null; e.state='boss_think'; e.timer=0; setGlow(e,false); }
+    }
+  }
+  $('bossfill').style.width = Math.max(0,e.hp/e.maxHp*100)+'%';
+}
+
+/* ---------- 弾更新 ---------- */
+function updateShots(dt){
+  for(let i=shots.length-1;i>=0;i--){
+    const s=shots[i];
+    if(s.isWave){
+      s.m.position.z += s.speed*dt;
+      s.m.material.opacity = Math.max(0, 0.85 + s.m.position.z*0.006);
+      for(const e of enemies){
+        if(e.dead||s.hitset.has(e)) continue;
+        if(Math.abs(e.x - s.m.position.x)<3 && Math.abs(e.z - s.m.position.z)<3){
+          s.hitset.add(e); damageEnemy(e, s.dmg);
+        }
+      }
+      if(s.m.position.z<-130){ scene.remove(s.m); shots.splice(i,1); }
+    }else{
+      s.m.position.z += s.speed*dt;
+      s.m.position.x += (s.x - s.m.position.x)*Math.min(1,3*dt);
+      if(Math.abs(s.m.position.z)<1.4){
+        if(Math.abs(G.px - s.m.position.x)<1.5){
+          damagePlayer(s.dmg);
+        }
+        burst(s.m.position,6,'amber',3);
+        scene.remove(s.m); shots.splice(i,1); continue;
+      }
+      if(s.m.position.z>16){ scene.remove(s.m); shots.splice(i,1); }
+    }
+  }
+}
+
+/* ---------- 戦闘終了 ---------- */
+function endBattle(victory){
+  if(G.ended) return;
+  G.ended=true;
+  setTimeout(()=>{
+    G.state='result';
+    $('hud').classList.remove('on');
+    const hpPct = G.hp/G.maxHp*100;
+    let rank,title;
+    if(!victory){ rank='D'; title='撃墜された…再挑戦だ'; }
+    else if(hpPct>=90){ rank='S'; title='完璧な走りだ!'; }
+    else if(hpPct>=70){ rank='A'; title='見事な腕前!'; }
+    else if(hpPct>=45){ rank='B'; title='悪くない走りだ'; }
+    else if(hpPct>=20){ rank='C'; title='なんとか振り切った…'; }
+    else { rank='C'; title='ギリギリの生還…'; }
+    $('rank').textContent=rank;
+    $('rank').style.animation='none'; void $('rank').offsetWidth; $('rank').style.animation='';
+    $('rtitle').textContent=title;
+    $('stats').innerHTML =
+      `<span>残りHP</span><b>${G.hp} / ${G.maxHp}</b>`+
+      `<span>撃破数</span><b>${G.kills}</b>`+
+      `<span>被弾回数</span><b>${G.taken}</b>`+
+      `<span>戦闘時間</span><b>${G.battleTime.toFixed(1)} 秒</b>`;
+    $('result').classList.add('show');
+    $('result').classList.remove('hide');
+  }, victory?1400:900);
+  if(victory){ showMsg('追撃部隊、撃破!', 2.5); sfx('limit'); }
+  else showMsg('', 0.1);
+}
+
+/* ---------- リセット&開始 ---------- */
+function resetGame(){
+  for(const e of enemies){ if(e.aimLine)scene.remove(e.aimLine); if(e.shockwave)scene.remove(e.shockwave.m); scene.remove(e.model.group); }
+  enemies.length=0;
+  for(const s of shots) scene.remove(s.m);
+  shots.length=0;
+  Object.assign(G,{t:0,speed:42,px:0,hp:1000,gauge:0,invuln:0,atkCd:0,swing:null,
+    kills:0,taken:0,battleTime:0,wave:0,waveDelay:1.6,shake:0,limitT:0,boss:null,ended:false});
+  $('bossbar').style.display='none';
+  limitRing.visible=false;
+}
+function startGame(){
+  initAudio();
+  if(AC && AC.state==='suspended') AC.resume();
+  resetGame();
+  G.state='play';
+  $('title').classList.add('hide');
+  $('result').classList.remove('show');
+  $('hud').classList.add('on');
+  $('orient').style.display='none';
+  showMsg('追撃部隊を全滅させろ!', 2.6);
+}
+$('startBtn').addEventListener('click', startGame);
+$('retryBtn').addEventListener('click', startGame);
+
+/* ---------- メインループ ---------- */
+let prevT = performance.now();
+let prevAtkL=false, prevAtkR=false, prevSp=false;
+
+function tick(now){
+  requestAnimationFrame(tick);
+  let dt = Math.min(0.05, (now-prevT)/1000); prevT=now;
+  G.t += dt;
+
+  const playing = G.state==='play' && !G.ended;
+
+  /* --- 速度 --- */
+  let targetSpd = 42;
+  if(playing && inp.accel) targetSpd = 72;
+  if(playing && inp.brake) targetSpd = 22;
+  G.speed += (targetSpd-G.speed)*3*dt;
+
+  /* --- プレイヤー移動 --- */
+  if(playing){
+    G.battleTime += dt;
+    const mv = (inp.right?1:0)-(inp.left?1:0);
+    G.px = THREE.MathUtils.clamp(G.px + mv*13*dt, -8.2, 8.2);
+    G.atkCd = Math.max(0, G.atkCd-dt);
+    G.invuln = Math.max(0, G.invuln-dt);
+
+    if(inp.atkL && !prevAtkL) playerAttack(-1);
+    if(inp.atkR && !prevAtkR) playerAttack(1);
+    if(inp.special && !prevSp) playerLimit();
+  }
+  prevAtkL=inp.atkL; prevAtkR=inp.atkR; prevSp=inp.special;
+
+  /* --- プレイヤーモデル --- */
+  const pg = playerModel.group;
+  pg.position.x += (G.px-pg.position.x)*Math.min(1,12*dt);
+  pg.position.z = 0;
+  pg.position.y = Math.sin(G.t*17)*0.02;
+  const lean = THREE.MathUtils.clamp((G.px-pg.position.x)*3 + ((inp.right?1:0)-(inp.left?1:0))*0.22, -0.5, 0.5);
+  pg.rotation.z = -lean;
+  pg.rotation.y = -lean*0.25;
+  playerModel.wheels.forEach(w=>w.rotation.x -= G.speed*dt*0.9);
+  // ガードポーズ
+  playerModel.rider.rotation.x = inp.guard&&playing ? 0.35 : 0;
+  // 斬撃モーション(押した側へ体ごと振り抜く)
+  if(G.swing){
+    G.swing.t += dt;
+    const sd = G.swing.side;                 // -1=左斬 / +1=右斬
+    const p = Math.min(1, G.swing.t/0.26);
+    const sw = Math.sin(p*Math.PI);          // 0→1→0 のスイングカーブ
+    // 上体と腕をその側へひねって振り抜く
+    playerModel.rider.rotation.y = sd * sw * 0.85;
+    playerModel.rider.rotation.z = -sd * sw * 0.3;
+    playerModel.armPivot.rotation.z = -sd * (0.6 + sw*1.9);
+    playerModel.armPivot.rotation.x = -0.4 + sw*1.1;
+    // 腕の付け根ごと斬る側へ寄せる(右斬→右、左斬→左に剣が届く)
+    playerModel.armPivot.position.x = 0.34 + sd * sw * 0.85;
+    playerModel.armPivot.position.y = 1.7 + sw * 0.15;
+    // バイクも攻撃側へグッと傾く
+    pg.rotation.z += -sd * sw * 0.28;
+    // 剣閃アーク: 攻撃側に出して前→後ろへ薙ぐ
+    const sweep = (p*2.4 - 1.2) * sd;        // 振り抜き角
+    [slashArc, slashArc2].forEach((arc,i)=>{
+      arc.visible = true;
+      arc.position.set(G.px + sd*(1.0 + sw*0.3), 1.45 - i*0.15, -0.1);
+      arc.rotation.set(Math.PI/2 + sd*0.28, 0, (sd>0 ? -0.85 : Math.PI-0.85) + sweep*(1+i*0.18));
+      arc.material.opacity = sw * (0.95 - i*0.3);
+    });
+    // 火花を斬撃側に散らす
+    if(G.swing.t<0.14) burst(new THREE.Vector3(G.px+sd*2.0, 1.4, -0.2), 3, 'cyan', 2.8);
+    if(p>=1){ G.swing=null; slashArc.visible=false; slashArc2.visible=false;
+      playerModel.rider.rotation.y=0; playerModel.rider.rotation.z=0; }
+  } else if(G.limitT<=0) {
+    playerModel.armPivot.rotation.z *= 0.8;
+    playerModel.armPivot.rotation.x *= 0.8;
+    playerModel.armPivot.position.x += (0.34 - playerModel.armPivot.position.x)*0.4;
+    playerModel.armPivot.position.y += (1.7  - playerModel.armPivot.position.y)*0.4;
+    playerModel.rider.rotation.y *= 0.8;
+    playerModel.rider.rotation.z *= 0.8;
+    slashArc.visible=false; slashArc2.visible=false;
+  }
+  // リミット演出
+  if(G.limitT>0){
+    G.limitT-=dt;
+    G.spinAng=(G.spinAng||0)+dt*22; // スピン!
+    pg.rotation.y = G.spinAng;
+    limitRing.position.set(G.px,1,0);
+    limitRing.scale.setScalar(limitRing.scale.x + dt*26);
+    limitRing.material = M.glowC;
+    if(G.limitT<=0){ limitRing.visible=false; G.spinAng=0; }
+  }
+
+  /* --- ヘッドライト --- */
+  headlight.position.set(G.px, 2.2, -0.8);
+  headlight.target.position.set(G.px, 0.5, -40);
+
+  /* --- コーススクロール --- */
+  for(const s of segments){
+    s.position.z += G.speed*dt;
+    if(s.position.z > 60) s.position.z -= COURSE;
+  }
+
+  /* --- 敵・弾 --- */
+  if(playing){
+    for(const e of enemies) updateEnemy(e, dt);
+    for(let i=enemies.length-1;i>=0;i--) if(enemies[i].dead) enemies.splice(i,1);
+    updateShots(dt);
+
+    // ウェーブ進行
+    if(enemies.length===0){
+      G.waveDelay -= dt;
+      if(G.waveDelay<=0){
+        if(G.wave>=waves_total){ endBattle(true); }
+        else { nextWave(); G.waveDelay=2.2; }
+      }
+    }
+    // ボス撃破チェック
+    if(G.boss && G.boss.dead && !G.ended){ endBattle(true); }
+  }
+  updateSparks(dt);
+
+  /* --- カメラ --- */
+  G.shake = Math.max(0, G.shake - dt*2.5);
+  const spdN = (G.speed-22)/50;
+  /* --- エンジン音(速度連動) --- */
+  if(AC){
+    const vol = G.state==='play' ? 0.045 + spdN*0.07 : 0.015;
+    engineGain.gain.setTargetAtTime(vol, AC.currentTime, 0.1);
+    engineOsc.frequency.setTargetAtTime(48 + spdN*70, AC.currentTime, 0.08);
+    engineFilter.frequency.setTargetAtTime(220 + spdN*1100, AC.currentTime, 0.08);
+  }
+  camera.fov += ((70 + spdN*14) - camera.fov)*4*dt;
+  camera.updateProjectionMatrix();
+  const shx = (Math.random()-0.5)*G.shake*0.5, shy=(Math.random()-0.5)*G.shake*0.4;
+  camera.position.x += (G.px*0.62 + shx - camera.position.x)*6*dt;
+  camera.position.y += (4.3 + shy - camera.position.y)*6*dt;
+  camera.position.z = 8;
+  camera.lookAt(G.px*0.85, 1.6, -14);
+
+  /* --- HUD --- */
+  if(G.state==='play'){
+    const hpP = G.hp/G.maxHp*100;
+    const hf = $('hpfill');
+    hf.style.width = hpP+'%';
+    hf.classList.toggle('low', hpP<50&&hpP>=25);
+    hf.classList.toggle('crit', hpP<25);
+    $('hptext').textContent = `${G.hp} / ${G.maxHp}`;
+    $('gfill').style.width = G.gauge+'%';
+    $('gtrack').classList.toggle('full', G.gauge>=100);
+    $('ability').classList.toggle('ready', G.gauge>=100);
+    $('bSp').classList.toggle('full', G.gauge>=100);
+    $('speedlines').style.opacity = Math.max(0, spdN-0.35)*0.9;
+  }
+
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(tick);
+
+</script>
+</body>
+</html>
